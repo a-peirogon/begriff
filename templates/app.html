@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% if concept %}{{ concept.concept }} — {% endif %}Wiki</title>
+  <style>
+    /* ── Reset ─────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Tokens ─────────────────────────────────────────────────────────── */
+    :root {
+      --bg:          #f4f4f2;
+      --surface:     #ffffff;
+      --border:      #d0d0cc;
+      --border-dark: #1a1a1a;
+      --text:        #1a1a1a;
+      --text-muted:  #666666;
+      --text-faint:  #999999;
+      --label-bg:    #f9f9f7;
+      --link:        #444444;
+      --font-serif:  'Georgia', 'Times New Roman', serif;
+      --font-mono:   'Courier New', 'Courier', monospace;
+    }
+
+    /* ── Base ───────────────────────────────────────────────────────────── */
+    body {
+      font-family: var(--font-serif);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    .workspace {
+      display: flex;
+      align-items: flex-start;
+      gap: 24px;
+      width: 100%;
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    .sidebar {
+      width: 280px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 28px 18px;
+      position: sticky;
+      top: 40px;
+    }
+
+    .sidebar-brand {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text);
+      border-bottom: 1px solid var(--border-dark);
+      padding-bottom: 10px;
+      margin-bottom: 22px;
+    }
+
+    /* Nivel 1 — Campo */
+    .field-group { margin-bottom: 14px; }
+
+    .field-header {
+      width: 100%;
+      background: none;
+      border: none;
+      border-bottom: 1px solid var(--border-dark);
+      padding-bottom: 4px;
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      text-align: left;
+    }
+    .field-title {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      font-weight: bold;
+      color: var(--text);
+    }
+
+    .branch-container {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.25s ease-out;
+      padding-left: 4px;
+    }
+    .field-group.open .branch-container { max-height: 600px; }
+
+    /* Nivel 2 — Rama */
+    .branch-group { margin: 6px 0; }
+
+    .branch-header {
+      width: 100%;
+      background: none;
+      border: none;
+      padding: 2px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      text-align: left;
+    }
+    .branch-title {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+    }
+
+    .concept-list {
+      list-style: none;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.2s ease-out;
+      padding-left: 10px;
+      border-left: 1px solid var(--border);
+      margin-left: 2px;
+    }
+    .branch-group.open .concept-list { max-height: 400px; }
+
+    /* Nivel 3 — Concepto */
+    .concept-list li { margin: 4px 0; }
+    .concept-list a {
+      font-family: var(--font-serif);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      line-height: 1.4;
+      display: block;
+    }
+    .concept-list a:hover, .concept-list a.active {
+      color: var(--text);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .toggle-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: var(--text-faint);
+    }
+
+    .action-link {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text);
+      text-decoration: none;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .action-link:hover { text-decoration: underline; }
+
+    /* ── Contenedor principal ───────────────────────────────────────────── */
+    .card {
+      flex: 1;
+      min-width: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 40px;
+    }
+
+    /* ── Cabecera de ficha ──────────────────────────────────────────────── */
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 2px solid var(--border-dark);
+      padding-bottom: 12px;
+      margin-bottom: 24px;
+      gap: 16px;
+    }
+    .card-title {
+      font-family: var(--font-serif);
+      font-size: 1.75rem;
+      font-weight: normal;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .card-id {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      letter-spacing: 2px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    /* ── Tabla de metadatos ─────────────────────────────────────────────── */
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 28px;
+    }
+    .meta-table td {
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      font-size: 0.95rem;
+      vertical-align: top;
+      line-height: 1.5;
+    }
+    .meta-label {
+      width: 22%;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      background: var(--label-bg);
+    }
+    .meta-value a {
+      color: var(--link);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      word-break: break-all;
+    }
+    .meta-value a:hover { color: var(--text); }
+
+    /* ── Sección de contenido ───────────────────────────────────────────── */
+    .content-section { margin-top: 28px; }
+
+    .section-label {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4px;
+      margin-bottom: 14px;
+    }
+    .content-body {
+      font-size: 1rem;
+      line-height: 1.75;
+      color: #2b2b2b;
+      text-align: justify;
+      white-space: pre-wrap;
+    }
+
+    /* ── Acciones de ficha ──────────────────────────────────────────────── */
+    .card-actions {
+      display: flex;
+      gap: 16px;
+      margin-top: 32px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+    }
+    .btn {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 7px 14px;
+      border: 1px solid var(--border-dark);
+      background: none;
+      color: var(--text);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .btn:hover { background: var(--border-dark); color: var(--surface); }
+    .btn-danger { border-color: #7a0000; color: #7a0000; }
+    .btn-danger:hover { background: #7a0000; color: var(--surface); }
+
+    /* ── Vista: Formulario ──────────────────────────────────────────────── */
+    .form-section { margin-bottom: 24px; }
+    .form-section label {
+      display: block;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .form-section input[type="text"],
+    .form-section input[type="url"],
+    .form-section textarea {
+      width: 100%;
+      font-family: var(--font-serif);
+      font-size: 0.95rem;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      outline: none;
+      resize: vertical;
+    }
+    .form-section input:focus,
+    .form-section textarea:focus {
+      border-color: var(--border-dark);
+    }
+    .form-hint {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--text-faint);
+      margin-top: 4px;
+    }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    .error-msg {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: #7a0000;
+      border: 1px solid #7a0000;
+      padding: 10px 14px;
+      margin-bottom: 24px;
+    }
+
+    /* ── Vista: Índice global ───────────────────────────────────────────── */
+    .index-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .index-table th {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      background: var(--label-bg);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      text-align: left;
+    }
+    .index-table td {
+      border: 1px solid var(--border);
+      padding: 9px 12px;
+      font-size: 0.9rem;
+      vertical-align: middle;
+    }
+    .index-table a {
+      color: var(--text);
+      text-decoration: none;
+    }
+    .index-table a:hover { text-decoration: underline; }
+    .index-table tr:hover td { background: var(--label-bg); }
+    .index-field {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    /* ── Compilar badge ─────────────────────────────────────────────────── */
+    .compile-bar {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-faint);
+      text-align: right;
+      margin-bottom: 6px;
+    }
+    .compile-bar button {
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: inherit;
+      color: var(--text-muted);
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .compile-bar button:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<div class="workspace">
+
+  {# ── Sidebar ──────────────────────────────────────────────────────────── #}
+  {% from '_sidebar.html' import render_sidebar %}
+  {{ render_sidebar(tree, active_slug if active_slug is defined else None, "app") }}
+
+  {# ── Panel central ────────────────────────────────────────────────────── #}
+  <main class="card">
+
+    {# ════ VISTA: CONCEPTO ═════════════════════════════════════════════════ #}
+    {% if view == "concept" and concept %}
+
+    <div class="card-header">
+      <h1 class="card-title">{{ concept.concept }}</h1>
+    </div>
+
+    <table class="meta-table">
+      <tr>
+        <td class="meta-label">Field</td>
+        <td class="meta-value">{{ concept.field }}</td>
+      </tr>
+      <tr>
+        <td class="meta-label">Source URL</td>
+        <td class="meta-value">
+          {% if concept.source_url %}
+          <a href="{{ concept.source_url }}" target="_blank" rel="noopener">{{ concept.source_url }}</a>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td class="meta-label">Local Summary</td>
+        <td class="meta-value">{{ concept.local_summary or '—' }}</td>
+      </tr>
+    </table>
+
+    <div class="content-section">
+      <div class="section-label">Fetched Content</div>
+      <div class="content-body">{{ concept.fetched_content or 'Sin contenido obtenido.' }}</div>
+    </div>
+
+    <div class="card-actions">
+      <a href="/edit/{{ concept._campo_slug }}/{{ concept._rama_slug }}/{{ concept._slug }}"
+         class="btn">Editar ficha</a>
+      <form action="/delete/{{ concept._campo_slug }}/{{ concept._rama_slug }}/{{ concept._slug }}"
+            method="POST" style="margin:0;"
+            onsubmit="return confirm('¿Eliminar este concepto permanentemente?')">
+        <button type="submit" class="btn btn-danger">Eliminar</button>
+      </form>
+    </div>
+
+    {# ════ VISTA: AÑADIR CONCEPTO ═══════════════════════════════════════════ #}
+    {% elif view == "add" %}
+
+    <div class="card-header">
+      <h1 class="card-title">Añadir concepto</h1>
+    </div>
+
+    {% if error is defined and error %}
+    <div class="error-msg">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/add">
+
+      <div class="form-section">
+        <label for="concept">Nombre del concepto *</label>
+        <input type="text" id="concept" name="concept" placeholder="Ej. Teorema de Gödel" required>
+      </div>
+
+      <div class="form-row">
+        <div class="form-section">
+          <label for="campo">Campo (carpeta raíz) *</label>
+          <input type="text" id="campo" name="campo" placeholder="Ej. Matemáticas" required>
+          <div class="form-hint">Se convertirá en slug de carpeta automáticamente.</div>
+        </div>
+        <div class="form-section">
+          <label for="rama">Rama / Tópico (subcarpeta) *</label>
+          <input type="text" id="rama" name="rama" placeholder="Ej. Lógica Matemática" required>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <label for="source_url">URL de fuente</label>
+        <input type="url" id="source_url" name="source_url"
+               placeholder="https://es.wikipedia.org/wiki/...">
+        <div class="form-hint">
+          El servidor extraerá el cuerpo del artículo automáticamente al guardar.
+        </div>
+      </div>
+
+      <div class="form-section">
+        <label for="local_summary">Resumen / intuición personal</label>
+        <textarea id="local_summary" name="local_summary" rows="4"
+                  placeholder="Escribe tu propia comprensión o notas personales sobre este concepto."></textarea>
+      </div>
+
+      <div class="card-actions">
+        <button type="submit" class="btn">Guardar y compilar</button>
+        <a href="/" class="btn">Cancelar</a>
+      </div>
+
+    </form>
+
+    {# ════ VISTA: EDITAR CONCEPTO ═══════════════════════════════════════════ #}
+    {% elif view == "edit" and concept %}
+
+    <div class="card-header">
+      <h1 class="card-title">Editar: {{ concept.concept }}</h1>
+    </div>
+
+    <form method="POST"
+          action="/edit/{{ concept._campo_slug }}/{{ concept._rama_slug }}/{{ concept._slug }}">
+
+      <div class="form-section">
+        <label>Nombre del concepto</label>
+        <input type="text" value="{{ concept.concept }}" disabled style="color:var(--text-muted);">
+        <div class="form-hint">El nombre no es editable directamente (implicaría renombrar el archivo).</div>
+      </div>
+
+      <div class="form-section">
+        <label for="source_url">URL de fuente</label>
+        <input type="url" id="source_url" name="source_url" value="{{ concept.source_url or '' }}">
+      </div>
+
+      <div class="form-section">
+        <label for="local_summary">Resumen / intuición personal</label>
+        <textarea id="local_summary" name="local_summary" rows="4">{{ concept.local_summary or '' }}</textarea>
+      </div>
+
+      <div class="form-section">
+        <label for="fetched_content">Contenido obtenido (editable)</label>
+        <textarea id="fetched_content" name="fetched_content" rows="10">{{ concept.fetched_content or '' }}</textarea>
+      </div>
+
+      <div class="card-actions">
+        <button type="submit" class="btn">Guardar cambios</button>
+        <button type="submit" name="refetch" value="1" class="btn">
+          Re-obtener contenido de la URL
+        </button>
+        <a href="/concept/{{ concept._campo_slug }}/{{ concept._rama_slug }}/{{ concept._slug }}"
+           class="btn">Cancelar</a>
+      </div>
+
+    </form>
+
+    {# ════ VISTA: ÍNDICE GLOBAL ═════════════════════════════════════════════ #}
+    {% else %}
+
+    {% if concepts %}
+    <table class="index-table">
+      <thead>
+        <tr>
+          <th>Concepto</th>
+          <th>Campo</th>
+          <th>URL de Fuente</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in concepts %}
+        <tr>
+          <td>
+            <a href="/concept/{{ c._campo_slug }}/{{ c._rama_slug }}/{{ c._slug }}">
+              {{ c.concept }}
+            </a>
+          </td>
+          <td class="index-field">{{ c.field }}</td>
+          <td class="index-field">
+            {% if c.source_url %}
+            <a href="{{ c.source_url }}" target="_blank" rel="noopener">
+              {{ c.source_url | truncate(50) }}
+            </a>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="font-family:var(--font-mono); font-size:0.85rem; color:var(--text-muted);">
+      Ningún concepto registrado aún. <a href="/add" style="color:inherit;">Añade el primero.</a>
+    </p>
+    {% endif %}
+
+    {% endif %}
+  </main>
+
+</div>
+
+<script>
+// ── Acordeón ──────────────────────────────────────────────────────────────
+function toggleGroup(el) {
+  const wasOpen = el.classList.contains('open');
+  el.classList.toggle('open', !wasOpen);
+  const indicator = el.querySelector('.toggle-indicator');
+  if (indicator) indicator.textContent = wasOpen ? '[+]' : '[-]';
+}
+
+// Auto-abrir el campo y rama del concepto activo
+document.addEventListener('DOMContentLoaded', () => {
+  const activeLink = document.querySelector('.concept-list a.active');
+  if (activeLink) {
+    const branchGroup = activeLink.closest('.branch-group');
+    const fieldGroup  = activeLink.closest('.field-group');
+    if (branchGroup) {
+      branchGroup.classList.add('open');
+      const ind = branchGroup.querySelector('.branch-header .toggle-indicator');
+      if (ind) ind.textContent = '[-]';
+    }
+    if (fieldGroup) {
+      fieldGroup.classList.add('open');
+      const ind = fieldGroup.querySelector('.field-header .toggle-indicator');
+      if (ind) ind.textContent = '[-]';
+    }
+  }
+});
+
+// ── Compilación manual ────────────────────────────────────────────────────
+async function compileSite() {
+  const status = document.getElementById('compile-status');
+  status.textContent = ' compilando…';
+  try {
+    const res  = await fetch('/compile', { method: 'POST' });
+    const data = await res.json();
+    status.textContent = ` ✓ ${data.compiled} fichas generadas`;
+  } catch (e) {
+    status.textContent = ' error';
+  }
+}
+</script>
+
+</body>
+</html>

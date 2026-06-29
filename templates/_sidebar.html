@@ -1,0 +1,57 @@
+{#
+  _sidebar.html — Macro reutilizable del sidebar con acordeones.
+  Parámetros:
+    tree         : dict del árbol de datos
+    active_slug  : slug del concepto activo (para marcar enlace)
+    url_fn       : función para construir URLs ("app" | "static")
+    base_path    : prefijo de ruta para sitio estático (ej. "../../..")
+#}
+
+{% macro render_sidebar(tree, active_slug, url_fn, base_path="") %}
+<aside class="sidebar">
+  {% for campo_slug, campo in tree.items() %}
+  <div class="field-group" data-slug="{{ campo_slug }}">
+    <button class="field-header" onclick="toggleGroup(this.parentNode)">
+      <span class="field-title">{{ campo.label }}</span>
+      <span class="toggle-indicator" aria-hidden="true">[+]</span>
+    </button>
+    <div class="branch-container">
+
+      {% for rama_slug, rama in campo.ramas.items() %}
+      <div class="branch-group" data-slug="{{ rama_slug }}">
+        <button class="branch-header" onclick="toggleGroup(this.parentNode); event.stopPropagation();">
+          <span class="branch-title">{{ rama.label }}</span>
+          <span class="toggle-indicator" aria-hidden="true">[+]</span>
+        </button>
+        <ul class="concept-list">
+          {% for c in rama.conceptos %}
+          <li>
+            {% if url_fn == "app" %}
+            <a href="/concept/{{ c._campo_slug }}/{{ c._rama_slug }}/{{ c._slug }}"
+               class="{{ 'active' if c._slug == active_slug else '' }}">
+              {{ c.concept }}
+            </a>
+            {% else %}
+            <a href="{{ base_path }}/{{ c._campo_slug }}/{{ c._rama_slug }}/{{ c._slug }}.html"
+               class="{{ 'active' if c._slug == active_slug else '' }}">
+              {{ c.concept }}
+            </a>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if url_fn == "app" %}
+  <a href="/add" class="action-link">+ Añadir concepto</a>
+  <a href="/" class="action-link">Índice global</a>
+  {% else %}
+  <a href="{{ base_path }}/index.html" class="action-link">Índice global</a>
+  {% endif %}
+</aside>
+{% endmacro %}

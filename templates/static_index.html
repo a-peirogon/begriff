@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Índice — ALETHEIA</title>
+  <link rel="stylesheet" href="{{ base_path }}/static/css/aletheia.css">
+</head>
+<body>
+
+<div class="workspace">
+
+  {% from '_sidebar.html' import render_sidebar %}
+  {{ render_sidebar(tree, None, "static", base_path) }}
+
+  <main class="card">
+    <div class="card-header">
+      <h1 class="card-title">Índice Global</h1>
+      <div class="card-id">ALETHEIA // {{ concepts | length }} entradas</div>
+    </div>
+
+    {% if concepts %}
+    <table class="index-table">
+      <thead>
+        <tr>
+          <th>Concepto</th>
+          <th>Campo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in concepts %}
+        <tr>
+          <td>
+            <a href="{{ base_path }}/{{ c._campo_slug }}/{{ c._rama_slug }}/{{ c._slug }}.html">
+              {{ c.concept }}
+            </a>
+          </td>
+          <td class="index-field">{{ c.field }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="font-family:var(--font-mono); font-size:0.85rem; color:var(--text-muted);">
+      Ningún concepto registrado aún.
+    </p>
+    {% endif %}
+  </main>
+
+</div>
+
+<script>
+function toggleGroup(el) {
+  const wasOpen = el.classList.contains('open');
+  el.classList.toggle('open', !wasOpen);
+  const indicator = el.querySelector('.toggle-indicator');
+  if (indicator) indicator.textContent = wasOpen ? '[+]' : '[-]';
+}
+</script>
+
+</body>
+</html>

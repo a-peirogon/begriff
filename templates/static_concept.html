@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ concept.concept }} — ALETHEIA</title>
+  <link rel="stylesheet" href="{{ base_path }}/static/css/aletheia.css">
+</head>
+<body>
+
+<div class="workspace">
+
+  {# ── Sidebar estático ──────────────────────────────────────────────────── #}
+  {% from '_sidebar.html' import render_sidebar %}
+  {{ render_sidebar(tree, active_slug, "static", base_path) }}
+
+  {# ── Ficha ─────────────────────────────────────────────────────────────── #}
+  <main class="card">
+
+    <div class="card-header">
+      <h1 class="card-title">{{ concept.concept }}</h1>
+      <div class="card-id">ALETHEIA</div>
+    </div>
+
+    <table class="meta-table">
+      <tr>
+        <td class="meta-label">Field</td>
+        <td class="meta-value">{{ concept.field }}</td>
+      </tr>
+      <tr>
+        <td class="meta-label">Source URL</td>
+        <td class="meta-value">
+          {% if concept.source_url %}
+          <a href="{{ concept.source_url }}" target="_blank" rel="noopener">{{ concept.source_url }}</a>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      <tr>
+        <td class="meta-label">Local Summary</td>
+        <td class="meta-value">{{ concept.local_summary or '—' }}</td>
+      </tr>
+    </table>
+
+    <div class="content-section">
+      <div class="section-label">Fetched Content</div>
+      <div class="content-body">{{ concept.fetched_content or 'Sin contenido obtenido.' }}</div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+function toggleGroup(el) {
+  const wasOpen = el.classList.contains('open');
+  el.classList.toggle('open', !wasOpen);
+  const indicator = el.querySelector('.toggle-indicator');
+  if (indicator) indicator.textContent = wasOpen ? '[+]' : '[-]';
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const activeLink = document.querySelector('.concept-list a.active');
+  if (activeLink) {
+    const branchGroup = activeLink.closest('.branch-group');
+    const fieldGroup  = activeLink.closest('.field-group');
+    if (branchGroup) {
+      branchGroup.classList.add('open');
+      const ind = branchGroup.querySelector('.branch-header .toggle-indicator');
+      if (ind) ind.textContent = '[-]';
+    }
+    if (fieldGroup) {
+      fieldGroup.classList.add('open');
+      const ind = fieldGroup.querySelector('.field-header .toggle-indicator');
+      if (ind) ind.textContent = '[-]';
+    }
+  }
+});
+</script>
+
+</body>
+</html>

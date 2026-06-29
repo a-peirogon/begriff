@@ -1,0 +1,5 @@
+flask>=3.0
+requests>=2.31
+# Scraping: instala UNO de los dos:
+readability-lxml>=0.8      # preferido — más limpio
+# beautifulsoup4>=4.12     # alternativa si readability-lxml da problemas
