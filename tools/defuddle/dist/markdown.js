@@ -1,0 +1,849 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.isGenericElement = isGenericElement;
+exports.asGenericElement = asGenericElement;
+exports.createMarkdownContent = createMarkdownContent;
+exports.toMarkdown = toMarkdown;
+const turndown_1 = __importDefault(require("turndown"));
+const utils_1 = require("./utils");
+const dom_1 = require("./utils/dom");
+function isGenericElement(node) {
+    return node !== null && typeof node === 'object' && 'getAttribute' in node;
+}
+function asGenericElement(node) {
+    return node;
+}
+const WIDTH_DESCRIPTOR_RE = /^(\d+)w,?$/;
+const DENSITY_DESCRIPTOR_RE = /^\d+(?:\.\d+)?x,?$/;
+// MathML element names, used to detect whether a <math> has real MathML to fall
+// back on (vs. only a rendered-text annotation). Hoisted so the sets aren't
+// rebuilt on every math element during conversion.
+const MATHML_NODE_NAMES = new Set([
+    'annotation', 'maction', 'math', 'menclose', 'merror', 'mfenced', 'mfrac', 'mi',
+    'mmultiscripts', 'mn', 'mo', 'mover', 'mpadded', 'mphantom', 'mprescripts',
+    'mroot', 'mrow', 'ms', 'mspace', 'msqrt', 'mstyle', 'msub', 'msubsup',
+    'msup', 'mtable', 'mtd', 'mtext', 'mtr', 'munder', 'munderover', 'none',
+    'semantics'
+]);
+// MathML elements whose structure can't be faithfully represented by a flat
+// rendered-text data-latex/alttext, so we prefer converting the MathML instead.
+const COMPLEX_MATHML_NODE_NAMES = new Set([
+    'menclose', 'mfrac', 'mmultiscripts', 'mover', 'mroot', 'msqrt', 'msub',
+    'msubsup', 'msup', 'mtable', 'mtd', 'mtr', 'munder', 'munderover'
+]);
+function formatMarkdownLinkDestination(href) {
+    if (!/\s/.test(href))
+        return href.replace(/([()])/g, '\\$1');
+    return `<${href.replace(/>/g, '\\>')}>`;
+}
+function formatMarkdownLinkTitle(title) {
+    if (!title)
+        return '';
+    return ` "${title.replace(/(\n+\s*)+/g, '\n').replace(/"/g, '\\"')}"`;
+}
+function getBestImageSrc(node) {
+    const srcset = node.getAttribute('srcset');
+    if (srcset) {
+        let bestUrl = '';
+        let bestWidth = 0;
+        // Tokenize by whitespace instead of splitting on commas, because CDN
+        // image URLs (e.g. Substack) can contain commas in the URL path
+        // (e.g. `w_424,c_limit,f_webp`). We scan tokens and treat any token
+        // matching `Nw` as a width descriptor; the preceding tokens form the URL.
+        const tokens = srcset.trim().split(/\s+/);
+        let urlParts = [];
+        for (const token of tokens) {
+            const widthMatch = token.match(WIDTH_DESCRIPTOR_RE);
+            if (widthMatch) {
+                const width = parseInt(widthMatch[1], 10);
+                if (urlParts.length > 0 && width > bestWidth) {
+                    const url = urlParts.join(' ').replace(/^,\s*/, '');
+                    if (url) {
+                        bestWidth = width;
+                        bestUrl = url;
+                    }
+                }
+                urlParts = [];
+            }
+            else if (DENSITY_DESCRIPTOR_RE.test(token)) {
+                // Density descriptor (e.g. 2x) — skip, not used for selection
+                urlParts = [];
+            }
+            else {
+                urlParts.push(token);
+            }
+        }
+        if (bestUrl)
+            return bestUrl;
+    }
+    return node.getAttribute('src') || '';
+}
+function createMarkdownContent(content, url) {
+    const footnotes = {};
+    const turndownService = new turndown_1.default({
+        headingStyle: 'atx',
+        hr: '---',
+        bulletListMarker: '-',
+        codeBlockStyle: 'fenced',
+        emDelimiter: '*',
+        preformattedCode: true,
+    });
+    // Escape tag-like sequences (e.g. a post titled "Monte<video>") in text nodes so
+    // CommonMark renderers such as Obsidian don't parse them as raw HTML and swallow the
+    // following content (#285). Only escape "<" that opens an HTML tag — a name directly
+    // followed by whitespace, "/", or ">". Email/URL autolinks like <a@b.com> or
+    // <https://x> have "@"/":" after the name and are left intact, as is "a < b". Real
+    // kept elements (video/iframe/svg/…) are DOM nodes, not text, so keep rules are safe.
+    const baseEscape = turndownService.escape.bind(turndownService);
+    turndownService.escape = (s) => baseEscape(s).replace(/<(?=\/?[A-Za-z][A-Za-z0-9-]*(?:\s|\/?>))/g, '\\<');
+    turndownService.addRule('table', {
+        filter: 'table',
+        replacement: function (content, node) {
+            if (!isGenericElement(node))
+                return content;
+            // Check if it's an equation table (ArXiv, Wikipedia)
+            if (node.classList?.contains('ltx_equation') || node.classList?.contains('ltx_eqn_table') || node.classList?.contains('numblk')) {
+                return handleNestedEquations(node);
+            }
+            // Detect layout tables (used for styling/positioning, not data).
+            // Exclude the node itself: turndown's DOM has a non-spec querySelector that
+            // matches the context element, so `node.querySelector('table')` returns the
+            // table itself — querySelectorAll with a self-filter finds only true nesting.
+            const hasNestedTables = Array.from(node.querySelectorAll('table')).some((t) => t !== node);
+            const directCells = Array.from(node.querySelectorAll('td, th')).filter((el) => (0, dom_1.isDirectTableChild)(el, node));
+            if (hasNestedTables || directCells.length <= 1) {
+                const directRows = Array.from(node.querySelectorAll('tr')).filter((el) => (0, dom_1.isDirectTableChild)(el, node));
+                const cellCounts = directRows.map((tr) => directCells.filter((cell) => cell.parentNode === tr).length);
+                const isSingleColumn = directRows.length > 0
+                    && new Set(cellCounts).size === 1
+                    && cellCounts[0] <= 1;
+                // Layout tables are used for positioning, not data: a single column, or
+                // any table whose cells embed nested tables (real data tables don't). In
+                // both cases flatten the cells' content — each nested data table is then
+                // rendered as its own markdown table — instead of emitting a broken,
+                // pipe-escaped row (#300). Multi-column layout cells read left-to-right.
+                if (isSingleColumn || hasNestedTables) {
+                    return '\n\n' + turndownService.turndown(directCells.map((cell) => (0, dom_1.serializeHTML)(cell)).join('')) + '\n\n';
+                }
+            }
+            // Check if the table has colspan or rowspan
+            const cells = Array.from(node.querySelectorAll('td, th'));
+            const hasComplexStructure = cells.some(cell => isGenericElement(asGenericElement(cell)) && (cell.hasAttribute('colspan') || cell.hasAttribute('rowspan')));
+            if (hasComplexStructure) {
+                // Clean up the table HTML
+                const cleanedTable = cleanupTableHTML(node);
+                return '\n\n' + cleanedTable + '\n\n';
+            }
+            // Process simple tables as before
+            // Use node.rows/row.cells when available (browser/JSDOM), fall back to
+            // querySelectorAll for environments like linkedom that lack these properties
+            const tableEl = node;
+            const rowElements = tableEl.rows && tableEl.rows.length > 0
+                ? Array.from(tableEl.rows)
+                : Array.from(node.querySelectorAll('tr')).filter((tr) => (0, dom_1.isDirectTableChild)(tr, node));
+            const rows = rowElements.map((row) => {
+                const cellElements = row.cells && row.cells.length > 0
+                    ? Array.from(row.cells)
+                    : Array.from(row.querySelectorAll('td, th')).filter((cell) => cell.parentNode === row);
+                return cellElements.map((cell) => {
+                    // Remove newlines and trim the content
+                    let cellContent = turndownService.turndown((0, dom_1.serializeHTML)(cell))
+                        .replace(/\n/g, ' ')
+                        .trim();
+                    // Escape pipe characters
+                    cellContent = cellContent.replace(/\|/g, '\\|');
+                    return cellContent;
+                });
+            });
+            if (!rows.length)
+                return content;
+            // A markdown table's width is fixed by its separator row; parsers
+            // drop body cells beyond it and pad rows that fall short. Source
+            // tables can be ragged, so size every row to the widest one. This
+            // preserves trailing columns the old "use row 0" logic dropped, and
+            // counting cell elements (not splitting the rendered string on '|')
+            // avoids miscounting escaped pipes inside cell content.
+            const columnCount = Math.max(...rows.map(r => r.length));
+            if (columnCount === 0)
+                return content;
+            const formatRow = (cells) => {
+                const padded = cells.length < columnCount
+                    ? [...cells, ...Array(columnCount - cells.length).fill('')]
+                    : cells;
+                return `| ${padded.join(' | ')} |`;
+            };
+            const separatorRow = `| ${Array(columnCount).fill('---').join(' | ')} |`;
+            // Combine all rows
+            const tableContent = [
+                formatRow(rows[0]),
+                separatorRow,
+                ...rows.slice(1).map(formatRow)
+            ].join('\n');
+            return `\n\n${tableContent}\n\n`;
+        }
+    });
+    turndownService.remove(['style', 'script']);
+    // Keep iframes, video, audio, sup, and sub elements
+    // @ts-ignore
+    turndownService.keep(['iframe', 'video', 'audio', 'sup', 'sub', 'svg', 'math']);
+    turndownService.addRule('button', {
+        filter: 'button',
+        replacement: (content) => content
+    });
+    turndownService.addRule('list', {
+        filter: ['ul', 'ol'],
+        replacement: function (content, node) {
+            // Remove trailing newlines/spaces from content
+            content = content.trim();
+            // Add a newline before the list if it's a top-level list
+            const element = node;
+            const isTopLevel = !(element.parentNode && (element.parentNode.nodeName === 'UL' || element.parentNode.nodeName === 'OL'));
+            return (isTopLevel ? '\n' : '') + content + '\n';
+        }
+    });
+    // Lists with tab indentation
+    turndownService.addRule('listItem', {
+        filter: 'li',
+        replacement: function (content, node, options) {
+            if (!isGenericElement(node))
+                return content;
+            // Handle task list items
+            const isTaskListItem = node.classList?.contains('task-list-item');
+            const checkbox = node.querySelector('input[type="checkbox"]');
+            let taskListMarker = '';
+            if (isTaskListItem && checkbox && isGenericElement(checkbox)) {
+                // Remove the checkbox from content since we'll add markdown checkbox
+                content = content.replace(/<input[^>]*>/, '');
+                taskListMarker = checkbox.getAttribute('checked') ? '[x] ' : '[ ] ';
+            }
+            content = content
+                // Remove trailing newlines
+                .replace(/\n+$/, '')
+                // Split into lines
+                .split('\n')
+                // Remove empty lines
+                .filter(line => line.length > 0)
+                // Add indentation to continued lines
+                .join('\n\t');
+            let prefix = options.bulletListMarker + ' ';
+            let parent = node.parentNode;
+            // Calculate the nesting level
+            let level = 0;
+            let currentParent = node.parentNode;
+            while (currentParent && isGenericElement(currentParent)) {
+                if (currentParent.nodeName === 'UL' || currentParent.nodeName === 'OL') {
+                    level++;
+                }
+                else if (currentParent.nodeName !== 'LI') {
+                    break;
+                }
+                currentParent = currentParent.parentNode;
+            }
+            // Add tab indentation based on nesting level, ensuring it's never negative
+            const indentLevel = Math.max(0, level - 1);
+            prefix = '\t'.repeat(indentLevel) + prefix;
+            if (parent && isGenericElement(parent) && parent.nodeName === 'OL') {
+                let start = parent.getAttribute('start');
+                let index = 1;
+                const children = Array.from(parent.children || []);
+                for (let i = 0; i < children.length; i++) {
+                    if (children[i] === node) {
+                        index = i + 1;
+                        break;
+                    }
+                }
+                prefix = '\t'.repeat(level - 1) + (start ? Number(start) + index - 1 : index) + '. ';
+            }
+            return prefix + taskListMarker + content.trim() + (node.nextSibling && !/\n$/.test(content) ? '\n' : '');
+        }
+    });
+    turndownService.addRule('figure', {
+        filter: 'figure',
+        replacement: function (content, node) {
+            if (!isGenericElement(node))
+                return content;
+            const img = node.querySelector('img');
+            const figcaption = node.querySelector('figcaption');
+            if (!img || !isGenericElement(img))
+                return content;
+            // If the figure contains <p> elements outside of <figcaption>, it's a
+            // content wrapper (e.g. Medium's layout), not an image figure. Let
+            // Turndown process its children normally instead of treating the whole
+            // thing as a single image.
+            const hasParagraphsOutsideFigcaption = Array.from(node.querySelectorAll('p')).some((p) => {
+                let ancestor = asGenericElement(p).parentNode;
+                while (ancestor && ancestor !== node) {
+                    if (ancestor.nodeName === 'FIGCAPTION')
+                        return false;
+                    ancestor = ancestor.parentNode;
+                }
+                return true;
+            });
+            if (hasParagraphsOutsideFigcaption)
+                return content;
+            const alt = img.getAttribute('alt') || '';
+            const src = getBestImageSrc(img);
+            let caption = '';
+            if (figcaption && isGenericElement(figcaption)) {
+                const tagSpan = figcaption.querySelector('.ltx_tag_figure');
+                const tagText = tagSpan && isGenericElement(tagSpan) ? tagSpan.textContent?.trim() : '';
+                // Process the caption content, including math elements
+                let captionContent = (0, dom_1.serializeHTML)(figcaption);
+                const ownerDoc = node.ownerDocument;
+                captionContent = captionContent.replace(/<math.*?>(.*?)<\/math>/g, (match, mathContent, offset, string) => {
+                    let latex = '';
+                    if (ownerDoc) {
+                        const fragment = (0, dom_1.parseHTML)(ownerDoc, match);
+                        const mathElement = fragment.querySelector('math');
+                        latex = mathElement && isGenericElement(mathElement) ? extractLatex(mathElement) : '';
+                    }
+                    const prevChar = string[offset - 1] || '';
+                    const nextChar = string[offset + match.length] || '';
+                    const isStartOfLine = offset === 0 || /\s/.test(prevChar);
+                    const isEndOfLine = offset + match.length === string.length || /\s/.test(nextChar);
+                    const leftSpace = (!isStartOfLine && !/[\s$]/.test(prevChar)) ? ' ' : '';
+                    const rightSpace = (!isEndOfLine && !/[\s$]/.test(nextChar)) ? ' ' : '';
+                    return `${leftSpace}$${latex}$${rightSpace}`;
+                });
+                // Convert the processed caption content to markdown
+                const captionMarkdown = turndownService.turndown(captionContent);
+                // Combine tag and processed caption
+                caption = `${tagText} ${captionMarkdown}`.trim();
+            }
+            // Handle references in the caption
+            caption = caption.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, href) => {
+                return `[${text}](${href})`;
+            });
+            return `![${alt}](${src})\n\n${caption}\n\n`;
+        }
+    });
+    // Prefer the highest-resolution image from srcset over the small fallback in src
+    turndownService.addRule('image', {
+        filter: 'img',
+        replacement: function (content, node) {
+            if (!isGenericElement(node))
+                return content;
+            const alt = node.getAttribute('alt') || '';
+            const src = getBestImageSrc(node);
+            const title = node.getAttribute('title') || '';
+            const titlePart = title ? ` "${title}"` : '';
+            return src ? `![${alt}](${src}${titlePart})` : '';
+        }
+    });
+    // Use Obsidian format for YouTube embeds and tweets
+    turndownService.addRule('embedToMarkdown', {
+        filter: function (node) {
+            if (!isGenericElement(node))
+                return false;
+            const src = node.getAttribute('src');
+            return !!src && (!!src.match(/(?:youtube\.com|youtube-nocookie\.com|youtu\.be)/) ||
+                !!src.match(/(?:twitter\.com|x\.com)/));
+        },
+        replacement: function (content, node) {
+            if (!isGenericElement(node))
+                return content;
+            const src = node.getAttribute('src');
+            if (src) {
+                const youtubeMatch = src.match(/(?:https?:\/\/)?(?:www\.)?(?:youtube\.com|youtube-nocookie\.com|youtu\.be)\/(?:embed\/|watch\?v=)?([a-zA-Z0-9_-]+)/);
+                if (youtubeMatch && youtubeMatch[1]) {
+                    return `\n![](https://www.youtube.com/watch?v=${youtubeMatch[1]})\n`;
+                }
+                // Direct URL: /user/status/id
+                const tweetDirectMatch = src.match(/(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/([^/]+)\/status\/([0-9]+)/);
+                if (tweetDirectMatch) {
+                    return `\n![](https://x.com/${tweetDirectMatch[1]}/status/${tweetDirectMatch[2]})\n`;
+                }
+                // Platform embed: ?id=
+                const tweetEmbedMatch = src.match(/(?:https?:\/\/)?(?:platform\.)?twitter\.com\/embed\/Tweet\.html\?.*?id=([0-9]+)/);
+                if (tweetEmbedMatch) {
+                    return `\n![](https://x.com/i/status/${tweetEmbedMatch[1]})\n`;
+                }
+            }
+            return content;
+        }
+    });
+    turndownService.addRule('highlight', {
+        filter: 'mark',
+        replacement: function (content) {
+            return '==' + content + '==';
+        }
+    });
+    turndownService.addRule('strikethrough', {
+        filter: (node) => node.nodeName === 'DEL' ||
+            node.nodeName === 'S' ||
+            node.nodeName === 'STRIKE',
+        replacement: function (content) {
+            return '~~' + content + '~~';
+        }
+    });
+    turndownService.addRule('link', {
+        filter: 'a',
+        replacement: function (content, node) {
+            if (!isGenericElement(node))
+                return content;
+            const href = node.getAttribute('href');
+            if (!href)
+                return content;
+            const title = formatMarkdownLinkTitle(node.getAttribute('title'));
+            const destination = formatMarkdownLinkDestination(href);
+            return `[${content}](${destination}${title})`;
+        }
+    });
+    // Add a new custom rule for complex link structures
+    turndownService.addRule('complexLinkStructure', {
+        filter: function (node, options) {
+            return (node.nodeName === 'A' &&
+                node.childNodes.length > 1 &&
+                Array.from(node.childNodes).some(child => ['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(child.nodeName)));
+        },
+        replacement: function (content, node, options) {
+            if (!isGenericElement(node))
+                return content;
+            const href = node.getAttribute('href');
+            const title = node.getAttribute('title');
+            // Extract the heading — use outerHTML to preserve the heading tag
+            const headingNode = node.querySelector('h1, h2, h3, h4, h5, h6');
+            const headingContent = headingNode ? turndownService.turndown(headingNode.outerHTML) : '';
+            // Remove the heading from the content
+            if (headingNode) {
+                headingNode.remove();
+            }
+            // Convert the remaining content
+            const remainingContent = turndownService.turndown((0, dom_1.serializeHTML)(node));
+            // Construct the new markdown
+            let markdown = `${headingContent}\n\n${remainingContent}\n\n`;
+            if (href) {
+                markdown += `[View original](${formatMarkdownLinkDestination(href)}${formatMarkdownLinkTitle(title)})`;
+            }
+            return markdown;
+        }
+    });
+    turndownService.addRule('arXivEnumerate', {
+        filter: (node) => {
+            return node.nodeName === 'OL' && isGenericElement(node) && (node.classList?.contains('ltx_enumerate') ?? false);
+        },
+        replacement: function (content, node) {
+            if (!isGenericElement(node))
+                return content;
+            const items = Array.from(node.children || []).map((item, index) => {
+                if (isGenericElement(item)) {
+                    const itemContent = ((0, dom_1.serializeHTML)(item) || '').replace(/^<span class="ltx_tag ltx_tag_item">\d+\.<\/span>\s*/, '');
+                    return `${index + 1}. ${turndownService.turndown(itemContent)}`;
+                }
+                return '';
+            });
+            return '\n\n' + items.join('\n\n') + '\n\n';
+        }
+    });
+    turndownService.addRule('citations', {
+        filter: (node) => {
+            if (isGenericElement(node)) {
+                const id = node.getAttribute('id');
+                return node.nodeName === 'SUP' && id !== null && id.startsWith('fnref:');
+            }
+            return false;
+        },
+        replacement: (content, node) => {
+            if (isGenericElement(node)) {
+                const id = node.getAttribute('id');
+                if (node.nodeName === 'SUP' && id !== null && id.startsWith('fnref:')) {
+                    const primaryNumber = id.replace('fnref:', '').split('-')[0];
+                    return `[^${primaryNumber}]`;
+                }
+            }
+            return content;
+        }
+    });
+    // Footnotes list
+    turndownService.addRule('footnotesList', {
+        filter: (node) => {
+            if (isGenericElement(node)) {
+                const parentNode = node.parentNode;
+                return (node.nodeName === 'OL' &&
+                    parentNode !== null &&
+                    isGenericElement(parentNode) &&
+                    parentNode.getAttribute('id') === 'footnotes');
+            }
+            return false;
+        },
+        replacement: (content, node) => {
+            if (!isGenericElement(node))
+                return content;
+            const references = Array.from(node.children || []).map(li => {
+                let id;
+                if (isGenericElement(li)) {
+                    const liId = li.getAttribute('id');
+                    if (liId !== null) {
+                        if (liId.startsWith('fn:')) {
+                            id = liId.replace('fn:', '');
+                        }
+                        else {
+                            const match = liId.split('/').pop()?.match(/cite_note-(.+)/);
+                            id = match ? match[1] : liId;
+                        }
+                    }
+                    // Remove the leading sup element if its content matches the footnote id
+                    const supElement = li.querySelector('sup');
+                    if (supElement && isGenericElement(supElement) && supElement.textContent?.trim() === id) {
+                        supElement.remove();
+                    }
+                    const referenceContent = turndownService.turndown((0, dom_1.serializeHTML)(li));
+                    // Remove the backlink from the footnote content
+                    const cleanedContent = referenceContent.replace(/\s*↩︎$/, '').trim();
+                    return `[^${id?.toLowerCase()}]: ${cleanedContent}`;
+                }
+                return '';
+            });
+            return '\n\n' + references.join('\n\n') + '\n\n';
+        }
+    });
+    // General removal rules for varous website elements
+    turndownService.addRule('removals', {
+        filter: function (node) {
+            if (!isGenericElement(node))
+                return false;
+            // Remove the Defuddle backlink from the footnote content
+            if (node.getAttribute('href')?.includes('#fnref'))
+                return true;
+            if (node.classList?.contains('footnote-backref'))
+                return true;
+            return false;
+        },
+        replacement: function (content, node) {
+            return '';
+        }
+    });
+    turndownService.addRule('handleTextNodesInTables', {
+        filter: function (node) {
+            return (0, utils_1.isTextNode)(node) &&
+                node.parentNode !== null &&
+                node.parentNode.nodeName === 'TD';
+        },
+        replacement: function (content) {
+            return content;
+        }
+    });
+    turndownService.addRule('preformattedCode', {
+        filter: (node) => {
+            return node.nodeName === 'PRE';
+        },
+        replacement: (content, node) => {
+            if (!isGenericElement(node))
+                return content;
+            const codeElement = node.querySelector('code');
+            if (!codeElement || !isGenericElement(codeElement))
+                return content;
+            const language = codeElement.getAttribute('data-lang')
+                || codeElement.getAttribute('data-language')
+                || codeElement.getAttribute('class')?.match(/language-(\w+)/)?.[1]
+                || node.getAttribute('data-language')
+                || '';
+            const code = codeElement.textContent || '';
+            // Clean up the content and escape backticks
+            const cleanCode = code
+                .trim()
+                .replace(/`/g, '\\`');
+            return `\n\`\`\`${language}\n${cleanCode}\n\`\`\`\n`;
+        }
+    });
+    turndownService.addRule('math', {
+        filter: (node) => {
+            return node.nodeName.toLowerCase() === 'math' ||
+                (isGenericElement(node) &&
+                    (node.classList?.contains('mwe-math-element') ||
+                        node.classList?.contains('mwe-math-fallback-image-inline') ||
+                        node.classList?.contains('mwe-math-fallback-image-display')));
+        },
+        replacement: (content, node) => {
+            if (!isGenericElement(node))
+                return content;
+            let latex = extractLatex(node);
+            // Remove leading and trailing whitespace
+            latex = latex.trim();
+            // Check if the math element is within a table
+            const isInTable = typeof node.closest === 'function' ? node.closest('table') !== null : false;
+            // Check if it's an inline or block math element
+            if (!isInTable && (node.getAttribute('display') === 'block' ||
+                node.classList?.contains('mwe-math-fallback-image-display') ||
+                isOnlyMathInParagraph(node) ||
+                (node.parentNode && isGenericElement(node.parentNode) &&
+                    node.parentNode.classList?.contains('mwe-math-element') &&
+                    node.parentNode.previousSibling && isGenericElement(node.parentNode.previousSibling) &&
+                    node.parentNode.previousSibling.nodeName.toLowerCase() === 'p'))) {
+                latex = formatBlockLatex(latex);
+                return `\n$$\n${latex}\n$$\n`;
+            }
+            else {
+                // For inline math, ensure there's a space before and after only if needed
+                const prevNode = node.previousSibling;
+                const nextNode = node.nextSibling;
+                const prevChar = prevNode && isGenericElement(prevNode) ? prevNode.textContent?.slice(-1) || '' : '';
+                const nextChar = nextNode && isGenericElement(nextNode) ? nextNode.textContent?.[0] || '' : '';
+                const isStartOfLine = !prevNode || ((0, utils_1.isTextNode)(prevNode) && prevNode.textContent?.trim() === '');
+                const isEndOfLine = !nextNode || ((0, utils_1.isTextNode)(nextNode) && nextNode.textContent?.trim() === '');
+                const leftSpace = (!isStartOfLine && prevChar && !/[\s$]/.test(prevChar)) ? ' ' : '';
+                const rightSpace = (!isEndOfLine && nextChar && !/[\s$]/.test(nextChar)) ? ' ' : '';
+                return `${leftSpace}$${latex}$${rightSpace}`;
+            }
+        }
+    });
+    turndownService.addRule('katex', {
+        filter: (node) => {
+            return isGenericElement(node) &&
+                (node.classList?.contains('math') || node.classList?.contains('katex'));
+        },
+        replacement: (content, node) => {
+            if (!isGenericElement(node))
+                return content;
+            // Try to find the original LaTeX content
+            // 1. Check data-latex attribute
+            let latex = node.getAttribute('data-latex');
+            // 2. If no data-latex, try to get from .katex-mathml
+            if (!latex) {
+                const mathml = node.querySelector('.katex-mathml annotation[encoding="application/x-tex"]');
+                latex = mathml && isGenericElement(mathml) ? mathml.textContent || '' : '';
+            }
+            // 3. If still no content, use text content as fallback
+            if (!latex) {
+                latex = node.textContent?.trim() || '';
+            }
+            // Determine if it's an inline formula
+            const mathElement = node.querySelector('.katex-mathml math');
+            const isInline = node.classList?.contains('math-inline') ||
+                (mathElement && isGenericElement(mathElement) && mathElement.getAttribute('display') !== 'block');
+            if (isInline) {
+                return `$${latex}$`;
+            }
+            else {
+                return `\n$$\n${latex}\n$$\n`;
+            }
+        }
+    });
+    // All callout types (GitHub alerts, Bootstrap alerts, callout asides) are
+    // standardized to div.callout[data-callout] in callouts.ts
+    turndownService.addRule('callout', {
+        filter: (node) => {
+            return (isGenericElement(node) &&
+                !!node.getAttribute('data-callout') &&
+                node.classList?.contains('callout'));
+        },
+        replacement: (content, node) => {
+            if (!isGenericElement(node))
+                return content;
+            const type = node.getAttribute('data-callout') || 'note';
+            // Fold indicator: data-callout-fold="-" means collapsed,
+            // "+" means collapsible but open, absent means not foldable
+            const fold = node.getAttribute('data-callout-fold');
+            const foldIndicator = fold === '-' || fold === '+' ? fold : '';
+            // Extract title from .callout-title-inner
+            const titleInner = node.querySelector('.callout-title-inner');
+            const title = titleInner?.textContent?.trim() || type.charAt(0).toUpperCase() + type.slice(1);
+            // Remove the title from the DOM so it doesn't appear in content
+            const titleDiv = node.querySelector('.callout-title');
+            if (titleDiv) {
+                titleDiv.remove();
+            }
+            // Re-convert without the title element
+            const contentEl = node.querySelector('.callout-content');
+            const calloutContent = contentEl
+                ? turndownService.turndown(contentEl.innerHTML)
+                : turndownService.turndown(node.innerHTML);
+            const lines = calloutContent.trim().split('\n');
+            const quotedContent = lines.map(line => `> ${line}`).join('\n');
+            return `\n\n> [!${type}]${foldIndicator} ${title}\n${quotedContent}\n\n`;
+        }
+    });
+    function handleNestedEquations(element) {
+        const mathElements = element.querySelectorAll('math');
+        if (mathElements.length === 0)
+            return '';
+        return Array.from(mathElements).map(mathElement => {
+            const annotation = mathElement.querySelector('annotation[encoding="application/x-tex"]');
+            const latex = annotation?.textContent?.trim() || mathElement.getAttribute('alttext')?.trim();
+            if (latex) {
+                const isInline = mathElement.closest('.ltx_eqn_inline, .mwe-math-element-inline') !== null;
+                return isInline ? `$${latex}$` : `\n$$\n${latex}\n$$`;
+            }
+            return '';
+        }).join('\n\n');
+    }
+    function cleanupTableHTML(element) {
+        const allowedAttributes = ['src', 'href', 'style', 'align', 'width', 'height', 'rowspan', 'colspan', 'bgcolor', 'scope', 'valign', 'headers'];
+        const cleanElement = (element) => {
+            Array.from(element.attributes).forEach(attr => {
+                if (!allowedAttributes.includes(attr.name)) {
+                    element.removeAttribute(attr.name);
+                }
+            });
+            element.childNodes.forEach(child => {
+                if ((0, utils_1.isElement)(child)) {
+                    cleanElement(child);
+                }
+            });
+        };
+        // Create a clone of the table to avoid modifying the original DOM
+        const tableClone = element.cloneNode(true);
+        cleanElement(tableClone);
+        // outerHTML encodes & as &amp;, which breaks LaTeX alignment
+        // characters inside math delimiters. Decode common entities since
+        // the output goes into markdown, not back through an HTML parser.
+        return tableClone.outerHTML
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>');
+    }
+    function extractLatex(element) {
+        const annotation = element.querySelector('annotation[encoding="application/x-tex"]');
+        if (annotation?.textContent?.trim()) {
+            return annotation.textContent.trim();
+        }
+        const latex = element.getAttribute('data-latex');
+        const alttext = element.getAttribute('alttext');
+        const hasMathML = hasMathMLChildren(element);
+        const hasComplexMathML = hasComplexMathMLChildren(element);
+        if (latex && (!hasMathML || isTrustworthyLatexAttribute(latex, hasComplexMathML))) {
+            return latex.trim();
+        }
+        else if (alttext && (!hasMathML || isTrustworthyLatexAttribute(alttext, hasComplexMathML))) {
+            return alttext.trim();
+        }
+        // Fallback: convert MathML → LaTeX for renderers like MathJax SVG that embed no LaTeX.
+        // Fails silently when mathml-to-latex is unavailable (core bundle).
+        if (element.nodeName.toLowerCase() === 'math' && hasMathML) {
+            const converted = convertMathMLToLatex(element);
+            if (converted)
+                return converted;
+        }
+        if (latex)
+            return latex.trim();
+        if (alttext)
+            return alttext.trim();
+        return '';
+    }
+    function hasMathMLChildren(element) {
+        return Array.from(element.children || []).some(child => {
+            const namespace = child.namespaceURI;
+            return namespace === 'http://www.w3.org/1998/Math/MathML' ||
+                MATHML_NODE_NAMES.has(child.nodeName.toLowerCase());
+        });
+    }
+    function hasComplexMathMLChildren(element) {
+        const visit = (node) => {
+            if (COMPLEX_MATHML_NODE_NAMES.has(node.nodeName.toLowerCase())) {
+                return true;
+            }
+            return Array.from(node.children || []).some(child => visit(child));
+        };
+        return visit(element);
+    }
+    function convertMathMLToLatex(element) {
+        try {
+            const { MathMLToLaTeX } = require('mathml-to-latex');
+            const mathML = (element.outerHTML || `<math>${element.innerHTML}</math>`)
+                .replace(/&amp;nbsp;/g, '&#xA0;')
+                .replace(/&nbsp;/g, '&#xA0;');
+            return MathMLToLaTeX.convert(mathML).trim();
+        }
+        catch (e) {
+            // not available or conversion failed
+        }
+        return '';
+    }
+    function isLikelyLatexSource(value) {
+        return /\\[a-zA-Z]+|[_^{}]|[$&]|\\\\|\\begin\{/.test(value);
+    }
+    function isTrustworthyLatexAttribute(value, hasComplexMathML) {
+        if (isLikelyLatexSource(value))
+            return true;
+        const trimmed = value.trim();
+        if (!trimmed)
+            return false;
+        if (hasComplexMathML)
+            return false;
+        // Rendered prose fragments such as "fan-outfan-in" can be written into
+        // data-latex by upstream normalizers. Keep simple symbolic text like
+        // "AB", "A, B", or "∑", but prefer MathML for hyphenated word fragments.
+        return !/[a-zA-Z]{3,}-[a-zA-Z]{2,}/.test(trimmed);
+    }
+    function hasLatexEnvironment(value) {
+        return /\\begin\{[^}]+\}/.test(value);
+    }
+    function formatBlockLatex(value) {
+        const latex = value.trim();
+        if (!latex)
+            return latex;
+        // mathml-to-latex wraps an unfenced <mtable> in a bare matrix
+        // environment. In block math these are aligned equation systems rather
+        // than matrices, so realign at the & columns.
+        const bareMatrix = latex.match(/^\\begin\{matrix\}([\s\S]*?)\\end\{matrix\}$/);
+        if (bareMatrix && !hasLatexEnvironment(bareMatrix[1])) {
+            return `\\begin{aligned}\n${bareMatrix[1].trim()}\n\\end{aligned}`;
+        }
+        if (hasLatexEnvironment(latex))
+            return latex;
+        if (latex.includes('\\\\') || latex.includes('&')) {
+            return `\\begin{aligned}\n${latex}\n\\end{aligned}`;
+        }
+        return latex;
+    }
+    function isOnlyMathInParagraph(element) {
+        const parent = element.parentNode;
+        if (!parent || !isGenericElement(parent) || parent.nodeName.toLowerCase() !== 'p') {
+            return false;
+        }
+        const elementChildren = Array.from(parent.children || []);
+        if (elementChildren.length !== 1 || elementChildren[0] !== element) {
+            return false;
+        }
+        const currentNode = element;
+        return Array.from(parent.childNodes || []).every(child => {
+            return child === currentNode || ((0, utils_1.isTextNode)(child) && child.textContent?.trim() === '');
+        });
+    }
+    try {
+        // Strip <wbr> tags — word break opportunity hints that are invisible in
+        // browsers but would insert unwanted spaces during Turndown conversion.
+        content = content.replace(/<wbr\s*\/?>/gi, '');
+        let markdown = turndownService.turndown(content);
+        // Remove the title from the beginning of the content if it exists
+        const titleMatch = markdown.match(/^# .+\n+/);
+        if (titleMatch) {
+            markdown = markdown.slice(titleMatch[0].length);
+        }
+        // Remove any empty links e.g. [](example.com) that remain, along with surrounding newlines
+        // But don't affect image links like ![](image.jpg)
+        markdown = markdown.replace(/\n*(?<!!)\[]\([^)]+\)\n*/g, '');
+        // Add a space between exclamation marks and image syntax ![
+        // e.g. "Yey!![IMG](url)" becomes "Yey! ![IMG](url)" to prevent
+        // the parser from misinterpreting the ! as part of the image markup.
+        // Also handles linked images: "Yey![![IMG](src)](href)"
+        markdown = markdown.replace(/!(?=!\[|\[!\[)/g, '! ');
+        // Remove any consecutive newlines more than two
+        markdown = markdown.replace(/\n{3,}/g, '\n\n');
+        // Append footnotes at the end of the document
+        if (Object.keys(footnotes).length > 0) {
+            markdown += '\n\n---\n\n';
+            for (const [id, content] of Object.entries(footnotes)) {
+                markdown += `[^${id}]: ${content}\n\n`;
+            }
+        }
+        return markdown.trim();
+    }
+    catch (error) {
+        console.error('Error converting HTML to Markdown:', error);
+        console.log('Problematic content:', content.substring(0, 1000) + '...');
+        return `Partial conversion completed with errors. Original HTML:\n\n${content}`;
+    }
+}
+function toMarkdown(result, options, url) {
+    if (options.markdown) {
+        result.content = createMarkdownContent(result.content, url);
+    }
+    else if (options.separateMarkdown) {
+        result.contentMarkdown = createMarkdownContent(result.content, url);
+    }
+}
+//# sourceMappingURL=markdown.js.map

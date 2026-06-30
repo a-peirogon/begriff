@@ -1,0 +1,7 @@
+{
+  "concept": "Paradoja de Russell",
+  "field": "Matemáticas / Lógica Matemática",
+  "source_url": "https://es.wikipedia.org/wiki/Paradoja_de_Russell",
+  "local_summary": "Demuestra la inconsistencia de la teoría ingenua de conjuntos al permitir la existencia de conjuntos que se contienen a sí mismos, colapsando el principio de abstracción irrestricto de Frege.",
+  "fetched_content": "La paradoja de Russell, expresada por Bertrand Russell en 1901, muestra que la teoría ingenua de conjuntos de Gottlob Frege es inconsistente. Formalmente, si definimos R = {x | x ∉ x}, entonces R ∈ R si y solo si R ∉ R, una contradicción lógica explícita que obligó a reestructurar los fundamentos axiomáticos de la matemática moderna."
+}

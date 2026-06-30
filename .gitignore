@@ -1,0 +1,17 @@
+.venv/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+node_modules/
+.npm
+xlr8.log
+*.log
+.env
+.env.local
+.env.*.local
+.DS_Store
+Thumbs.db
+Desktop.ini

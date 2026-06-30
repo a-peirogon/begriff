@@ -3,73 +3,91 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ concept.concept }} — ALETHEIA</title>
+  <title>{{ concept.concept }} — Aletheia</title>
+  <link rel="stylesheet" href="{{ base_path }}/static/css/fonts.css">
   <link rel="stylesheet" href="{{ base_path }}/static/css/aletheia.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {
+            delimiters: [
+              {left: '$$', right: '$$', display: true},
+              {left: '$', right: '$', display: false}
+            ],
+            throwOnError: false
+          });"></script>
 </head>
 <body>
 
 <div class="workspace">
 
-  {# ── Sidebar estático ──────────────────────────────────────────────────── #}
   {% from '_sidebar.html' import render_sidebar %}
   {{ render_sidebar(tree, active_slug, "static", base_path) }}
 
-  {# ── Ficha ─────────────────────────────────────────────────────────────── #}
   <main class="card">
 
     <div class="card-header">
+      <span class="card-class-badge">{{ cls.label }}</span>
       <h1 class="card-title">{{ concept.concept }}</h1>
-      <div class="card-id">ALETHEIA</div>
     </div>
 
+    <div class="card-dir-bar">
+      <label>campo:</label>
+      <span>{{ concept.field or '—' }}</span>
+    </div>
+
+    {% if cls.fields %}
     <table class="meta-table">
+      {% for key, label, _ in cls.fields %}
       <tr>
-        <td class="meta-label">Field</td>
-        <td class="meta-value">{{ concept.field }}</td>
-      </tr>
-      <tr>
-        <td class="meta-label">Source URL</td>
+        <td class="meta-label">{{ label }}</td>
         <td class="meta-value">
-          {% if concept.source_url %}
-          <a href="{{ concept.source_url }}" target="_blank" rel="noopener">{{ concept.source_url }}</a>
-          {% else %}—{% endif %}
+          {% set val = concept.get(key) %}
+          {% if key.endswith('url') and val %}
+          <a href="{{ val }}" target="_blank" rel="noopener">{{ val }}</a>
+          {% else %}
+          {{ val or '—' }}
+          {% endif %}
         </td>
       </tr>
-      <tr>
-        <td class="meta-label">Local Summary</td>
-        <td class="meta-value">{{ concept.local_summary or '—' }}</td>
-      </tr>
+      {% endfor %}
     </table>
+    {% endif %}
 
-    <div class="content-section">
-      <div class="section-label">Fetched Content</div>
-      <div class="content-body">{{ concept.fetched_content or 'Sin contenido obtenido.' }}</div>
+    {% if concept.tags %}
+    <div class="card-tags">
+      {% for tag in concept.tags %}
+      <span class="tag">{{ tag }}</span>
+      {% endfor %}
     </div>
+    {% endif %}
+
+    <div class="content-body prose">
+      {{ concept.body | safe }}
+    </div>
+
+    {% if concept.related %}
+    <div class="card-related">
+      <span class="related-label">Véase también:</span>
+      {% for rel in concept.related %}
+      <a href="{{ base_path }}/{{ concept._campo_slug }}/{{ concept._rama_slug }}/{{ rel }}.html"
+         class="related-link">{{ rel.replace('_', ' ') }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
 
   </main>
 </div>
 
 <script>
-function toggleGroup(el) {
-  const wasOpen = el.classList.contains('open');
-  el.classList.toggle('open', !wasOpen);
-  const indicator = el.querySelector('.toggle-indicator');
-  if (indicator) indicator.textContent = wasOpen ? '[+]' : '[-]';
-}
+function toggleDir(el) { el.classList.toggle('open'); }
 document.addEventListener('DOMContentLoaded', () => {
-  const activeLink = document.querySelector('.concept-list a.active');
-  if (activeLink) {
-    const branchGroup = activeLink.closest('.branch-group');
-    const fieldGroup  = activeLink.closest('.field-group');
-    if (branchGroup) {
-      branchGroup.classList.add('open');
-      const ind = branchGroup.querySelector('.branch-header .toggle-indicator');
-      if (ind) ind.textContent = '[-]';
-    }
-    if (fieldGroup) {
-      fieldGroup.classList.add('open');
-      const ind = fieldGroup.querySelector('.field-header .toggle-indicator');
-      if (ind) ind.textContent = '[-]';
+  const active = document.querySelector('.tree-leaf.active');
+  if (active) {
+    let node = active.parentNode;
+    while (node && !node.classList.contains('sidebar')) {
+      if (node.classList.contains('tree-dir')) node.classList.add('open');
+      node = node.parentNode;
     }
   }
 });

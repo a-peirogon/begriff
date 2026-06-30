@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Índice — ALETHEIA</title>
+  <title>Índice — Aletheia</title>
+  <link rel="stylesheet" href="{{ base_path }}/static/css/fonts.css">
   <link rel="stylesheet" href="{{ base_path }}/static/css/aletheia.css">
 </head>
 <body>
@@ -15,8 +16,8 @@
 
   <main class="card">
     <div class="card-header">
-      <h1 class="card-title">Índice Global</h1>
-      <div class="card-id">ALETHEIA // {{ concepts | length }} entradas</div>
+      <h1 class="card-title">Índice</h1>
+      <div class="card-id">{{ concepts | length }} entradas</div>
     </div>
 
     {% if concepts %}
@@ -25,6 +26,7 @@
         <tr>
           <th>Concepto</th>
           <th>Campo</th>
+          <th>Fuente</th>
         </tr>
       </thead>
       <tbody>
@@ -35,27 +37,26 @@
               {{ c.concept }}
             </a>
           </td>
-          <td class="index-field">{{ c.field }}</td>
+          <td class="index-field">{{ c.field or '—' }}</td>
+          <td class="index-field">
+            {% if c.source_url %}
+            <a href="{{ c.source_url }}" target="_blank" rel="noopener"
+               style="color:var(--link);">{{ c.source_url | truncate(48) }}</a>
+            {% else %}—{% endif %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     {% else %}
-    <p style="font-family:var(--font-mono); font-size:0.85rem; color:var(--text-muted);">
-      Ningún concepto registrado aún.
-    </p>
+    <div class="empty-state">Ningún concepto registrado aún.</div>
     {% endif %}
   </main>
 
 </div>
 
 <script>
-function toggleGroup(el) {
-  const wasOpen = el.classList.contains('open');
-  el.classList.toggle('open', !wasOpen);
-  const indicator = el.querySelector('.toggle-indicator');
-  if (indicator) indicator.textContent = wasOpen ? '[+]' : '[-]';
-}
+function toggleDir(el) { el.classList.toggle('open'); }
 </script>
 
 </body>

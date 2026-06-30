@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Índice — Aletheia</title>
+  <link rel="stylesheet" href="/static/css/fonts.css">
+  <link rel="stylesheet" href="/static/css/aletheia.css">
+</head>
+<body>
+
+<div class="workspace">
+
+  
+  
+<aside class="sidebar">
+
+<div class="sidebar-brand">
+  <img src="/static/logo.jpg" alt="Aletheia Logo" class="sidebar-brand-image">
+  <span class="sidebar-brand-name">Aletheia</span>
+</div>
+
+  <nav class="sidebar-nav">
+    
+    <a href="/index.html" class="sidebar-nav-item">Índice</a>
+    
+  </nav>
+
+  
+  <div class="sidebar-filter">
+    <input type="text" id="sidebar-filter-input" placeholder="Filtrar…"
+           oninput="filterTree(this.value)">
+  </div>
+
+  <div class="sidebar-tree" id="sidebar-tree">
+    
+    
+    <div class="tree-dir" data-slug="filosofia">
+      <button class="tree-dir-header" onclick="toggleDir(this.parentNode)">
+        <span class="tree-dir-label">Filosofia</span>
+        <span class="tree-dir-count">0</span>
+        <span class="tree-dir-arrow">▶</span>
+      </button>
+      <div class="tree-dir-children">
+
+        
+        <div class="tree-dir" data-slug="epistemologia">
+          <button class="tree-dir-header" onclick="toggleDir(this.parentNode); event.stopPropagation();">
+            <span class="tree-dir-label">Epistemologia</span>
+            <span class="tree-dir-count">0</span>
+            <span class="tree-dir-arrow">▶</span>
+          </button>
+          <div class="tree-dir-children">
+            
+          </div>
+        </div>
+        
+
+      </div>
+    </div>
+    
+    
+    <div class="tree-dir" data-slug="matematicas">
+      <button class="tree-dir-header" onclick="toggleDir(this.parentNode)">
+        <span class="tree-dir-label">Matematicas</span>
+        <span class="tree-dir-count">1</span>
+        <span class="tree-dir-arrow">▶</span>
+      </button>
+      <div class="tree-dir-children">
+
+        
+        <div class="tree-dir" data-slug="logica_matematica">
+          <button class="tree-dir-header" onclick="toggleDir(this.parentNode); event.stopPropagation();">
+            <span class="tree-dir-label">Logica Matematica</span>
+            <span class="tree-dir-count">1</span>
+            <span class="tree-dir-arrow">▶</span>
+          </button>
+          <div class="tree-dir-children">
+            
+              
+              <a href="/matematicas/logica_matematica/completitud_de_godel.html"
+                 class="tree-leaf "
+                 data-name="completitud de gödel">
+                Completitud de Gödel
+              </a>
+              
+            
+          </div>
+        </div>
+        
+
+      </div>
+    </div>
+    
+    
+    <div class="tree-dir" data-slug="raw">
+      <button class="tree-dir-header" onclick="toggleDir(this.parentNode)">
+        <span class="tree-dir-label">Raw</span>
+        <span class="tree-dir-count">0</span>
+        <span class="tree-dir-arrow">▶</span>
+      </button>
+      <div class="tree-dir-children">
+
+        
+
+      </div>
+    </div>
+    
+    
+    <div class="tree-dir" data-slug="wiki">
+      <button class="tree-dir-header" onclick="toggleDir(this.parentNode)">
+        <span class="tree-dir-label">Wiki</span>
+        <span class="tree-dir-count">0</span>
+        <span class="tree-dir-arrow">▶</span>
+      </button>
+      <div class="tree-dir-children">
+
+        
+
+      </div>
+    </div>
+    
+  </div>
+
+</aside>
+
+<script>
+function toggleNewMenu(btn) {
+  const menu = btn.parentNode.querySelector('.sidebar-new-menu');
+  const isOpen = menu.classList.contains('open');
+  document.querySelectorAll('.sidebar-new-menu.open').forEach(m => m.classList.remove('open'));
+  menu.classList.toggle('open', !isOpen);
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.sidebar-new')) {
+    document.querySelectorAll('.sidebar-new-menu.open').forEach(m => m.classList.remove('open'));
+  }
+});
+
+function filterTree(query) {
+  const q = query.trim().toLowerCase();
+  const leaves = document.querySelectorAll('#sidebar-tree .tree-leaf');
+  const dirs = document.querySelectorAll('#sidebar-tree .tree-dir');
+
+  if (!q) {
+    leaves.forEach(l => l.style.display = '');
+    dirs.forEach(d => { d.style.display = ''; d.classList.remove('open'); });
+    return;
+  }
+
+  leaves.forEach(l => {
+    const match = l.dataset.name.includes(q);
+    l.style.display = match ? '' : 'none';
+  });
+
+  // Mostrar y abrir solo las carpetas que contienen al menos un match
+  dirs.forEach(d => {
+    const hasMatch = d.querySelectorAll('.tree-leaf').length &&
+      Array.from(d.querySelectorAll('.tree-leaf')).some(l => l.style.display !== 'none');
+    d.style.display = hasMatch ? '' : 'none';
+    if (hasMatch) d.classList.add('open');
+  });
+}
+</script>
+
+
+  <main class="card">
+    <div class="card-header">
+      <h1 class="card-title">Índice</h1>
+      <div class="card-id">1 entradas</div>
+    </div>
+
+    
+    <table class="index-table">
+      <thead>
+        <tr>
+          <th>Concepto</th>
+          <th>Campo</th>
+          <th>Fuente</th>
+        </tr>
+      </thead>
+      <tbody>
+        
+        <tr>
+          <td>
+            <a href="/matematicas/logica_matematica/completitud_de_godel.html">
+              Completitud de Gödel
+            </a>
+          </td>
+          <td class="index-field">Matematicas / Logica Matematica</td>
+          <td class="index-field">
+            
+            <a href="https://plato.stanford.edu/entries/goedel-incompleteness/" target="_blank" rel="noopener"
+               style="color:var(--link);">https://plato.stanford.edu/entries/goedel-inc...</a>
+            
+          </td>
+        </tr>
+        
+      </tbody>
+    </table>
+    
+  </main>
+
+</div>
+
+<script>
+function toggleDir(el) { el.classList.toggle('open'); }
+</script>
+
+</body>
+</html>
