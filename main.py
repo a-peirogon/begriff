@@ -1,10 +1,3 @@
-"""
-ALETHEIA — Motor local de fichero técnico personal.
-Servidor Flask ligero + compilador de sitio estático.
-Formato de datos: Markdown con front-matter YAML.
-Sistema de clases tipo Cartesian: cada objeto pertenece a una clase
-que define qué campos tiene (además del cuerpo Markdown libre).
-"""
 
 import re
 import json
@@ -17,10 +10,6 @@ import frontmatter
 import markdown as md_lib
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 
-# ── Defuddle (Node CLI, vendorizado desde fuente) ───────────────────────────
-# Repo en tools/defuddle/ (dist/ ya compilado). Antes de usar por primera vez:
-#   cd tools/defuddle && npm install
-# (instala solo las dependencias, dist/ ya viene compilado en el repo)
 DEFUDDLE_DIR = Path(__file__).parent / "tools" / "defuddle"
 DEFUDDLE_CLI = DEFUDDLE_DIR / "dist" / "cli.js"
 
@@ -28,18 +17,6 @@ app = Flask(__name__)
 
 DATA_DIR   = Path("data")
 PUBLIC_DIR = Path("public")
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# CLASES — esquema fijo de campos por tipo de objeto
-# ════════════════════════════════════════════════════════════════════════════
-# Cada clase define:
-#   label        : nombre legible
-#   icon         : letra/símbolo corto para el sidebar y card-id
-#   fields       : lista de (key, label, input_type) para el formulario
-#                  input_type ∈ {"text", "url", "number"}
-#   scrape_field : qué campo, si se llena con URL, dispara scraping
-#                  automático hacia el cuerpo Markdown (None si no aplica)
 
 CLASSES = {
     "concept": {
@@ -80,21 +57,13 @@ CLASSES = {
 
 DEFAULT_CLASS = "concept"
 
-
 def get_class(class_key: str) -> dict:
     return CLASSES.get(class_key, CLASSES[DEFAULT_CLASS])
 
-
 @app.context_processor
 def inject_classes():
-    """Hace CLASSES disponible como `classes` en todas las plantillas
-    (necesario para el menú "Nuevo objeto" del sidebar)."""
+
     return {"classes": CLASSES}
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# UTILIDADES
-# ════════════════════════════════════════════════════════════════════════════
 
 def slugify(text: str) -> str:
     text = unicodedata.normalize("NFD", text)
@@ -104,28 +73,19 @@ def slugify(text: str) -> str:
     text = re.sub(r"[\s_-]+", "_", text)
     return text
 
-
 def parse_md(path: Path) -> dict:
-    """Lee un .md con front-matter y devuelve un dict con metadatos + body HTML."""
+
     post = frontmatter.load(str(path))
     body_html = render_markdown(post.content)
     data = dict(post.metadata)
-    data["body"] = body_html       # HTML renderizado del cuerpo
-    data["_raw"] = post.content    # Markdown sin procesar (para edición)
+    data["body"] = body_html
+    data["_raw"] = post.content
     data.setdefault("_class", DEFAULT_CLASS)
     return data
 
-
-# ── Protección de fórmulas LaTeX frente al parser de Markdown ──────────────
-# python-markdown puede interpretar _ y * dentro de fórmulas como énfasis en
-# casos raros (p.ej. "$test_value$"). Para evitarlo, las fórmulas $$...$$ y
-# $...$ se reemplazan por placeholders opacos antes de pasar por Markdown,
-# y se restauran después. El renderizado real ocurre en el navegador vía
-# KaTeX (mismo motor que usa el blog Hakyll), que lee el texto $...$ tal cual.
 _LATEX_PLACEHOLDER = "\x00LATEX{{{}}}\x00"
 _BLOCK_MATH_RE  = re.compile(r"\$\$(.+?)\$\$", re.DOTALL)
 _INLINE_MATH_RE = re.compile(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)", re.DOTALL)
-
 
 def render_markdown(text: str) -> str:
     stash = []
@@ -144,23 +104,13 @@ def render_markdown(text: str) -> str:
 
     return re.sub(r"\x00LATEX\{(\d+)\}\x00", _unstash, html)
 
-
 def write_md(path: Path, meta: dict, body: str) -> None:
-    """Escribe un .md con front-matter YAML limpio."""
+
     post = frontmatter.Post(body, **meta)
     path.write_text(frontmatter.dumps(post), encoding="utf-8")
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# SCRAPING — vía Defuddle (CLI Node, github.com/kepano/defuddle)
-# ════════════════════════════════════════════════════════════════════════════
-
 def fetch_content(url: str) -> dict:
-    """
-    Extrae el contenido legible de una URL usando el CLI de Defuddle
-    (vendorizado en tools/defuddle/, compilado desde fuente).
-    Devuelve { "body": str (Markdown), "title": str, "author": str, "site": str }.
-    """
+
     empty = {"body": "", "title": "", "author": "", "site": ""}
     if not url:
         return empty
@@ -194,16 +144,8 @@ def fetch_content(url: str) -> dict:
     except Exception as exc:
         return {**empty, "body": f"*[Error al obtener contenido: {exc}]*"}
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# CARGA DEL ÁRBOL
-# ════════════════════════════════════════════════════════════════════════════
-
 def load_tree() -> dict:
-    """
-    Lee data/ y devuelve:
-    { campo_slug: { label, ramas: { rama_slug: { label, conceptos: [...] } } } }
-    """
+
     tree = {}
     if not DATA_DIR.exists():
         return tree
@@ -239,7 +181,6 @@ def load_tree() -> dict:
 
     return tree
 
-
 def load_concept(campo_slug: str, rama_slug: str, concept_slug: str) -> dict | None:
     path = DATA_DIR / campo_slug / rama_slug / f"{concept_slug}.md"
     if not path.exists():
@@ -253,7 +194,6 @@ def load_concept(campo_slug: str, rama_slug: str, concept_slug: str) -> dict | N
         data["concept"] = concept_slug.replace("_", " ").title()
     return data
 
-
 def all_concepts(tree: dict) -> list:
     flat = []
     for campo in tree.values():
@@ -261,12 +201,8 @@ def all_concepts(tree: dict) -> list:
             flat.extend(rama["conceptos"])
     return flat
 
-
 def directory_options(tree: dict) -> list:
-    """
-    Lista plana de (campo_slug, campo_label, rama_slug, rama_label) para
-    poblar el <select> de directorios en el formulario de creación.
-    """
+
     options = []
     for campo_slug, campo in tree.items():
         for rama_slug, rama in campo["ramas"].items():
@@ -277,11 +213,6 @@ def directory_options(tree: dict) -> list:
                 "rama_label":  rama["label"],
             })
     return options
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# COMPILADOR ESTÁTICO
-# ════════════════════════════════════════════════════════════════════════════
 
 def compile_static():
     PUBLIC_DIR.mkdir(exist_ok=True)
@@ -314,17 +245,11 @@ def compile_static():
 
     return len(concepts)
 
-
-# ════════════════════════════════════════════════════════════════════════════
-# RUTAS
-# ════════════════════════════════════════════════════════════════════════════
-
 @app.route("/")
 def index():
     tree = load_tree()
     return render_template("app.html", tree=tree, concepts=all_concepts(tree),
                            view="index", concept=None)
-
 
 @app.route("/concept/<campo_slug>/<rama_slug>/<concept_slug>")
 def view_concept(campo_slug, rama_slug, concept_slug):
@@ -337,7 +262,6 @@ def view_concept(campo_slug, rama_slug, concept_slug):
                            view="concept", concept=concept, cls=cls,
                            active_slug=concept_slug)
 
-
 @app.route("/add", methods=["GET"])
 def add_form():
     tree = load_tree()
@@ -348,14 +272,12 @@ def add_form():
                            classes=CLASSES, class_key=class_key, cls=cls,
                            dir_options=directory_options(tree))
 
-
 @app.route("/add", methods=["POST"])
 def add_concept():
     concept_name = request.form.get("concept", "").strip()
     class_key    = request.form.get("class_key", DEFAULT_CLASS).strip()
     cls          = get_class(class_key)
 
-    # ── Resolver directorio: existente (select) o nuevo (texto) ────────────
     campo_choice = request.form.get("campo_choice", "").strip()
     rama_choice  = request.form.get("rama_choice", "").strip()
     campo_new    = request.form.get("campo_new", "").strip()
@@ -388,7 +310,6 @@ def add_concept():
     out_dir = DATA_DIR / campo_slug / rama_slug
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── Campos propios de la clase ──────────────────────────────────────────
     meta = {
         "concept": concept_name,
         "field":   f"{campo_raw} / {rama_raw}",
@@ -399,12 +320,11 @@ def add_concept():
     for key, _, _ in cls["fields"]:
         meta[key] = request.form.get(key, "").strip()
 
-    # ── Scraping automático si el campo designado trae una URL ─────────────
     scrape_field = cls.get("scrape_field")
     if scrape_field and meta.get(scrape_field) and not body:
         scraped = fetch_content(meta[scrape_field])
         body = scraped["body"]
-        # Si el usuario no puso nombre, usar el título extraído
+
         if not concept_name and scraped["title"]:
             meta["concept"] = scraped["title"]
         if scraped["author"]:
@@ -418,7 +338,6 @@ def add_concept():
     return redirect(url_for("view_concept", campo_slug=campo_slug,
                             rama_slug=rama_slug, concept_slug=concept_slug))
 
-
 @app.route("/edit/<campo_slug>/<rama_slug>/<concept_slug>", methods=["GET"])
 def edit_form(campo_slug, rama_slug, concept_slug):
     tree    = load_tree()
@@ -429,7 +348,6 @@ def edit_form(campo_slug, rama_slug, concept_slug):
     return render_template("app.html", tree=tree, concepts=all_concepts(tree),
                            view="edit", concept=concept, cls=cls,
                            active_slug=concept_slug)
-
 
 @app.route("/edit/<campo_slug>/<rama_slug>/<concept_slug>", methods=["POST"])
 def edit_concept(campo_slug, rama_slug, concept_slug):
@@ -453,7 +371,6 @@ def edit_concept(campo_slug, rama_slug, concept_slug):
 
     body = request.form.get("body", "").strip()
 
-    # ── Re-scraping si se solicita ───────────────────────────────────────────
     scrape_field = cls.get("scrape_field")
     if request.form.get("refetch") and scrape_field and meta.get(scrape_field):
         scraped = fetch_content(meta[scrape_field])
@@ -468,7 +385,6 @@ def edit_concept(campo_slug, rama_slug, concept_slug):
 
     return redirect(url_for("view_concept", campo_slug=campo_slug,
                             rama_slug=rama_slug, concept_slug=concept_slug))
-
 
 @app.route("/delete/<campo_slug>/<rama_slug>/<concept_slug>", methods=["POST"])
 def delete_concept(campo_slug, rama_slug, concept_slug):
@@ -486,16 +402,10 @@ def delete_concept(campo_slug, rama_slug, concept_slug):
     compile_static()
     return redirect(url_for("index"))
 
-
 @app.route("/compile", methods=["POST"])
 def manual_compile():
     n = compile_static()
     return jsonify({"ok": True, "compiled": n})
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# ENTRADA
-# ════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     with app.app_context():
