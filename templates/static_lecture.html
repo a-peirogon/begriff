@@ -74,7 +74,7 @@
       {% set _img, _body_sin_img = extract_first_image(concept.body) %}
       {% if _img %}
       <figure class="lecture-figure">
-        <img src="{{ _img[0] }}" alt="{{ _img[1] }}">
+        <img src="{{ resolve_asset_src(_img[0], base_path) }}" alt="{{ _img[1] }}">
       </figure>
       {% endif %}
 

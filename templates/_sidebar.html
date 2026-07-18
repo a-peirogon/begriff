@@ -51,7 +51,7 @@
   {% if sidebar_obra and sidebar_obra_img %}
   <hr>
   <a href="{{ concept_url_static(sidebar_obra, base_path) }}" class="ltcol-feature-link">
-    <img class="ltcol-feature-img" src="{{ sidebar_obra_img[0] }}" alt="{{ sidebar_obra_img[1] or sidebar_obra.concept }}">
+    <img class="ltcol-feature-img" src="{{ resolve_asset_src(sidebar_obra_img[0], base_path) }}" alt="{{ sidebar_obra_img[1] or sidebar_obra.concept }}">
   </a>
   <div class="ltcol-caption">{{ sidebar_obra_img[1] or sidebar_obra.concept }}</div>
   {% endif %}

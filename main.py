@@ -481,7 +481,7 @@ def compile_once() -> int:
     sidebar_obra     = latest_from_catalogo(catalogos, "Obras", n=1)
     sidebar_obra_img = first_image_from_body(sidebar_obra[0].get("body")) if sidebar_obra else None
 
-    tagline = "Lorem ipsum"
+    tagline = "Un espacio personal de notas y conceptos."
 
     base_ctx = dict(
         tree=tree,
@@ -523,7 +523,7 @@ def compile_once() -> int:
 
     (PUBLIC_DIR / "index.html").write_text(
         render("static_index.html", **base_ctx,
-               latest_concepts=latest_concepts, base_path=""),
+               latest_concepts=latest_concepts, base_path="."),
         encoding="utf-8",
     )
 
