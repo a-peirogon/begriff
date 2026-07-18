@@ -1,0 +1,59 @@
+/* ── Crimson ─────────────────────────────────────────────────────────────── */
+@font-face {
+   font-family: 'Crimson';
+   src: url('../fonts/Crimson-Roman.woff2') format('woff2'),
+   url('../fonts/Crimson-Roman.woff')  format('woff');
+   font-weight: 400;
+   font-style: normal;
+   font-display: swap;
+}
+@font-face {
+   font-family: 'Crimson';
+   src: url('../fonts/Crimson-Italic.woff2') format('woff2'),
+   url('../fonts/Crimson-Italic.woff')  format('woff');
+   font-weight: 400;
+   font-style: italic;
+   font-display: swap;
+}
+@font-face {
+   font-family: 'Crimson';
+   src: url('../fonts/Crimson-Semibold.woff2') format('woff2'),
+   url('../fonts/Crimson-Semibold.woff')  format('woff');
+   font-weight: 600;
+   font-style: normal;
+   font-display: swap;
+}
+@font-face {
+   font-family: 'Crimson';
+   src: url('../fonts/Crimson-SemiboldItalic.woff2') format('woff2'),
+   url('../fonts/Crimson-SemiboldItalic.woff')  format('woff');
+   font-weight: 600;
+   font-style: italic;
+   font-display: swap;
+}
+
+/* ── ET Book ─────────────────────────────────────────────────────────────── */
+@font-face {
+   font-family: 'et-book';
+   src: url('../fonts/et-book-roman-line-figures.woff2') format('woff2'),
+   url('../fonts/et-book-roman-line-figures.woff')  format('woff');
+   font-weight: 400;
+   font-style: normal;
+   font-display: swap;
+}
+@font-face {
+   font-family: 'et-book';
+   src: url('../fonts/et-book-display-italic-old-style-figures.woff2') format('woff2'),
+   url('../fonts/et-book-display-italic-old-style-figures.woff')  format('woff');
+   font-weight: 400;
+   font-style: italic;
+   font-display: swap;
+}
+@font-face {
+   font-family: 'et-book';
+   src: url('../fonts/et-book-bold-line-figures.woff2') format('woff2'),
+   url('../fonts/et-book-bold-line-figures.woff')  format('woff');
+   font-weight: 700;
+   font-style: normal;
+   font-display: swap;
+}

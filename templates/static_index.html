@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Índice — Begriff</title>
+  <link rel="stylesheet" href="{{ base_path }}/static/css/fonts.css">
+  <link rel="stylesheet" href="{{ base_path }}/static/css/begriff.css">
+</head>
+<body>
+
+<div class="page">
+
+  {% from '_header.html' import render_header %}
+  {{ render_header(tree, base_path, catalogos=catalogos) }}
+
+  <div class="page-body">
+
+  {% from '_sidebar.html' import render_sidebar %}
+  {{ render_sidebar(base_path, tagline=tagline, sidebar_latest=sidebar_latest, sidebar_lecturas=sidebar_lecturas,
+                     sidebar_obra=sidebar_obra, sidebar_obra_img=sidebar_obra_img,
+                     concept_url_static=concept_url_static, tree=tree, catalogos=catalogos,
+                     category_url_static=category_url_static) }}
+
+  <div class="page-main">
+
+  <main class="card">
+
+    {% if welcome and welcome.body %}
+    <div class="content-body prose">
+      {{ welcome.body | safe }}
+    </div>
+    {% else %}
+    <div class="empty-state"> _index.md en la raíz del vault para portada.</div>
+    {% endif %}
+
+    {% set areas_con_icono = (tree.items() | list) | selectattr('1.icon') | list %}
+    {% set areas_sin_icono = (tree.items() | list) | rejectattr('1.icon') | list %}
+    {% if tree %}
+    <div class="content-section">
+      <div class="section-label">Áreas temáticas</div>
+
+      {% if areas_con_icono %}
+      <div class="area-gallery">
+        {% for root_slug, root in areas_con_icono %}
+        <a href="{{ base_path }}/{{ root_slug }}/index.html" class="area-gallery-item">
+          <img class="area-gallery-icon" src="{{ root.icon }}" alt="">
+          <span class="area-gallery-label">{{ root.label }}</span>
+        </a>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if areas_sin_icono %}
+      <p class="area-directory">
+        {% for root_slug, root in areas_sin_icono %}
+        <a href="{{ base_path }}/{{ root_slug }}/index.html" class="area-dept">{{ root.label }}</a>{% if not loop.last %}&nbsp;<span class="area-sep">•</span>&nbsp;{% endif %}
+        {% endfor %}
+      </p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="content-section index-footer">
+      <a href="https://a-peirogon.github.io/" class="index-footer-link" target="_blank" rel="noopener">Blog</a>
+    </div>
+
+  </main>
+
+  </div>
+
+  </div>
+
+</div>
+
+</body>
+</html>

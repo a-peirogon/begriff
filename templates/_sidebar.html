@@ -1,0 +1,60 @@
+{% macro render_sidebar(base_path="", tagline=None, tree=None, catalogos=None,
+                        sidebar_latest=None, sidebar_lecturas=None,
+                        sidebar_obra=None, sidebar_obra_img=None,
+                        concept_url_static=None, category_url_static=None) %}
+{% set tree = tree or {} %}
+{% set catalogos = catalogos or {} %}
+{% set sidebar_latest = sidebar_latest or [] %}
+{% set sidebar_lecturas = sidebar_lecturas or [] %}
+<aside class="ltcol">
+
+  <a href="{{ base_path }}/index.html" class="ltcol-logo-link">
+    <img class="ltcol-logo" src="{{ base_path }}/static/logo.png" alt="Begriff">
+  </a>
+  {% if tagline %}
+  <div class="ltcol-tagline">{{ tagline | safe }}</div>
+  {% endif %}
+
+  {% if tree or catalogos %}
+  <hr>
+  <div class="ltcol-title">Áreas</div>
+  <div class="ltcol-list">
+    {% for root_slug, root in tree.items() %}
+    <a href="{{ category_url_static([root_slug], base_path) }}">{{ root.label }}</a>&nbsp;<span class="ltcol-sep">•</span>&nbsp;
+    {% endfor %}
+    {% for root_slug, root in catalogos.items() %}
+    <a href="{{ category_url_static([root_slug], base_path) }}">{{ root.label }}</a>{% if not loop.last %}&nbsp;<span class="ltcol-sep">•</span>&nbsp;{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if sidebar_latest %}
+  <hr>
+  <div class="ltcol-title">Últimas entradas</div>
+  <div class="ltcol-list">
+    {% for c in sidebar_latest %}
+    <a href="{{ concept_url_static(c, base_path) }}">{{ c.concept }}</a>{% if not loop.last %}&nbsp;<span class="ltcol-sep">•</span>&nbsp;{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if sidebar_lecturas %}
+  <hr>
+  <div class="ltcol-title">Últimas lecturas</div>
+  <div class="ltcol-list">
+    {% for c in sidebar_lecturas %}
+    <a href="{{ concept_url_static(c, base_path) }}">{{ c.concept }}</a>{% if not loop.last %}&nbsp;<span class="ltcol-sep">•</span>&nbsp;{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if sidebar_obra and sidebar_obra_img %}
+  <hr>
+  <a href="{{ concept_url_static(sidebar_obra, base_path) }}" class="ltcol-feature-link">
+    <img class="ltcol-feature-img" src="{{ sidebar_obra_img[0] }}" alt="{{ sidebar_obra_img[1] or sidebar_obra.concept }}">
+  </a>
+  <div class="ltcol-caption">{{ sidebar_obra_img[1] or sidebar_obra.concept }}</div>
+  {% endif %}
+
+</aside>
+{% endmacro %}

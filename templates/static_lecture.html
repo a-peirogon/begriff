@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ concept.concept }} — Begriff</title>
+  <link rel="stylesheet" href="{{ base_path }}/static/css/fonts.css">
+  <link rel="stylesheet" href="{{ base_path }}/static/css/begriff.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body, {
+            delimiters: [
+              {left: '$$', right: '$$', display: true},
+              {left: '$', right: '$', display: false}
+            ],
+            throwOnError: false
+          });"></script>
+</head>
+<body>
+
+<div class="page">
+
+  {% from '_header.html' import render_header %}
+  {% set _cat_path = concept._cat_path or [] %}
+  {% set _root = tree.get(_cat_path[0]) if _cat_path and _cat_path[0] in tree else (catalogos.get(_cat_path[0]) if _cat_path else None) %}
+  {{ render_header(tree, base_path, active_root_slug=(_cat_path[0] if _cat_path else None), catalogos=catalogos) }}
+
+  <div class="page-body">
+
+  {% from '_sidebar.html' import render_sidebar %}
+  {{ render_sidebar(base_path, tagline=tagline, sidebar_latest=sidebar_latest, sidebar_lecturas=sidebar_lecturas,
+                     sidebar_obra=sidebar_obra, sidebar_obra_img=sidebar_obra_img,
+                     concept_url_static=concept_url_static, tree=tree, catalogos=catalogos,
+                     category_url_static=category_url_static) }}
+
+  <div class="page-main">
+
+  <main class="card">
+
+    <div class="card-breadcrumb">
+      <a href="{{ base_path }}/index.html">Índice</a>
+      {% for i in range(_cat_path | length) %}
+      <span class="card-dir-sep">/</span>
+      <a href="{{ base_path }}/{{ _cat_path[:i+1] | join('/') }}/index.html">{{ _cat_path[i].replace('_', ' ').title() }}</a>
+      {% endfor %}
+    </div>
+
+    <div class="card-header">
+      {% if _root %}
+      <span class="card-class-badge">{{ _root.label }}</span>
+      {% endif %}
+      <h1 class="card-title">{{ concept.concept }}</h1>
+    </div>
+
+    {% if concept.cita %}
+    <blockquote class="lecture-quote">
+      <p>{{ concept.cita }}</p>
+      {% if concept.cita_autor %}
+      <footer class="lecture-quote-attr">
+        —
+        {% if concept.cita_autor_url %}
+        <a href="{{ concept.cita_autor_url }}" target="_blank" rel="noopener">{{ concept.cita_autor }}</a>
+        {% else %}
+        {{ concept.cita_autor }}
+        {% endif %}
+        {% if concept.cita_fuente %}, <cite>{{ concept.cita_fuente }}</cite>{% endif %}
+      </footer>
+      {% endif %}
+    </blockquote>
+    {% endif %}
+
+    <div class="lecture-content-wrap">
+      {% set _img, _body_sin_img = extract_first_image(concept.body) %}
+      {% if _img %}
+      <figure class="lecture-figure">
+        <img src="{{ _img[0] }}" alt="{{ _img[1] }}">
+      </figure>
+      {% endif %}
+
+      {% if concept.video or concept.pdf %}
+      <div class="lecture-resources">
+        {% if concept.video %}
+        <a class="lecture-resource-btn" href="{{ concept.video }}" target="_blank" rel="noopener">Video</a>
+        {% endif %}
+        {% if concept.pdf %}
+        <a class="lecture-resource-btn" href="{{ concept.pdf }}" target="_blank" rel="noopener">PDF Notes</a>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <div class="content-body prose lecture-body">
+        {{ _body_sin_img | safe }}
+      </div>
+    </div>
+
+    {% if _cat_path %}
+    <div class="card-categories">
+      <span class="categories-label">Categorías:</span>
+      {% for i in range(_cat_path | length) %}
+      <a class="category-chip"
+         href="{{ base_path }}/{{ _cat_path[:i+1] | join('/') }}/index.html">{{ _cat_path[i].replace('_', ' ').title() }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  </main>
+
+  </div>
+
+  </div>
+
+</div>
+
+</body>
+</html>

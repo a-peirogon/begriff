@@ -1,0 +1,14 @@
+{% macro render_header(tree, base_path="", active_root_slug=None, catalogos=None) %}
+{% set catalogos = catalogos or {} %}
+<header class="site-header"></header>
+<script>
+(function(){
+var input=document.getElementById('site-search-input'),results=document.getElementById('site-search-results');
+if(!input)return;var base="{{ base_path }}",data=null;
+fetch(base+"/search-index.json").then(function(r){return r.json()}).then(function(j){data=j}).catch(function(){});
+function render(matches){results.innerHTML='';matches.forEach(function(item){var a=document.createElement('a');a.href=base+item.url;a.className='site-search-result';var t=document.createElement('span');t.className='site-search-result-title';t.textContent=item.title;var m=document.createElement('span');m.className='site-search-result-meta';m.textContent=item.meta;a.appendChild(t);a.appendChild(m);results.appendChild(a)})}
+input.addEventListener('input',function(){var q=input.value.trim().toLowerCase();if(!q||!data){results.classList.remove('open');return}var matches=data.filter(function(item){return item.title.toLowerCase().indexOf(q)!==-1}).slice(0,12);if(!matches.length){results.classList.remove('open');return}render(matches);results.classList.add('open')});
+document.addEventListener('click',function(e){if(!results.contains(e.target)&&e.target!==input)results.classList.remove('open')});
+})();
+</script>
+{% endmacro %}
